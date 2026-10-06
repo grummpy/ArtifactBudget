@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-06T00:00:00Z",
+  "repositories": [
+    {
+      "repository": "demo/platform-engine",
+      "snapshot_at": "2026-10-06T00:00:00Z",
+      "complete": true,
+      "files": ["platform-engine-page-1.json", "platform-engine-page-2.json"]
+    },
+    {
+      "repository": "demo/web-console",
+      "snapshot_at": "2026-10-06T00:00:00Z",
+      "complete": true,
+      "files": ["web-console-page-1.json"]
+    },
+    {
+      "repository": "demo/mobile-app",
+      "snapshot_at": "2026-10-04T00:00:00Z",
+      "complete": false,
+      "files": ["mobile-app-page-1.json"]
+    },
+    {
+      "repository": "demo/docs-site",
+      "snapshot_at": "2026-10-05T18:00:00Z",
+      "complete": true,
+      "files": ["docs-site-page-1.json"]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "total_count": 3,
+  "artifacts": [
+    {
+      "id": 2001,
+      "node_id": "MDg6QXJ0aWZhY3QyMDAx",
+      "name": "web-build",
+      "size_in_bytes": 524288000,
+      "url": "https://api.github.com/repos/demo/web-console/actions/artifacts/2001",
+      "archive_download_url": "https://api.github.com/repos/demo/web-console/actions/artifacts/2001/zip",
+      "expired": false,
+      "created_at": "2026-10-05T00:00:00Z",
+      "expires_at": "2026-10-12T00:00:00Z",
+      "updated_at": "2026-10-05T00:00:00Z",
+      "workflow_run": {
+        "id": 9101,
+        "repository_id": 2,
+        "head_repository_id": 2,
+        "head_branch": "main",
+        "head_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    {
+      "id": 2002,
+      "node_id": "MDg6QXJ0aWZhY3QyMDAy",
+      "name": "sourcemap",
+      "size_in_bytes": 94371840,
+      "url": "https://api.github.com/repos/demo/web-console/actions/artifacts/2002",
+      "archive_download_url": "https://api.github.com/repos/demo/web-console/actions/artifacts/2002/zip",
+      "expired": false,
+      "created_at": "2026-09-28T00:00:00Z",
+      "expires_at": "2026-10-08T00:00:00Z",
+      "updated_at": "2026-09-28T00:00:00Z",
+      "workflow_run": {
+        "id": 9102,
+        "repository_id": 2,
+        "head_repository_id": 2,
+        "head_branch": "main",
+        "head_sha": "ffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    {
+      "id": 2003,
+      "node_id": "MDg6QXJ0aWZhY3QyMDAz",
+      "name": "storybook",
+      "size_in_bytes": 31457280,
+      "url": "https://api.github.com/repos/demo/web-console/actions/artifacts/2003",
+      "archive_download_url": "https://api.github.com/repos/demo/web-console/actions/artifacts/2003/zip",
+      "expired": false,
+      "created_at": "2026-10-02T00:00:00Z",
+      "expires_at": null,
+      "updated_at": "2026-10-02T00:00:00Z",
+      "workflow_run": {
+        "id": 9103,
+        "repository_id": 2,
+        "head_repository_id": 2,
+        "head_branch": "main",
+        "head_sha": "1111111111111111111111111111111111111111"
+      }
+    }
+  ]
+}
