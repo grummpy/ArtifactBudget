@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "artifactbudget"
+version = "0.1.0"
+description = "Offline inventory and retention forecast for exported GitHub Actions artifact metadata"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["github-actions", "artifacts", "retention"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Environment :: Console",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+artifactbudget = "artifactbudget.cli:console_main"
+
+[tool.setuptools.packages.find]
+include = ["artifactbudget*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-06T00:00:00Z",
+  "repositories": [
+    {
+      "repository": "fixture/cohort",
+      "snapshot_at": "2026-10-06T00:00:00Z",
+      "complete": true,
+      "files": ["page.json"]
+    }
+  ]
+}

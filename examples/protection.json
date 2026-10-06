@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "protected_artifacts": [
+    {
+      "repository": "demo/platform-engine",
+      "artifact_id": 1001,
+      "reason": "Release evidence"
+    },
+    {
+      "repository": "demo/docs-site",
+      "artifact_id": 4001,
+      "reason": "Audit bundle"
+    },
+    {
+      "repository": "demo/web-console",
+      "artifact_id": 9999,
+      "reason": "Unknown policy target (demo fixture)"
+    }
+  ]
+}
