@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import stat
 from pathlib import Path
 
 import pytest
@@ -88,6 +89,35 @@ def test_write_report_replacement_failure_rolls_back_existing_reports(tmp_path, 
     assert {name: (tmp_path / name).read_text(encoding="utf-8") for name in OUTPUT_NAMES} == original
     assert not list(tmp_path.glob(".*.tmp"))
     assert not list(tmp_path.glob(".*.bak"))
+
+
+def test_write_report_preserves_existing_permissions_on_overwrite(tmp_path):
+    original = {name: f"old {name}" for name in OUTPUT_NAMES}
+    replacement = {name: f"new {name}" for name in OUTPUT_NAMES}
+    expected_modes = {}
+    for index, (name, content) in enumerate(original.items()):
+        target = tmp_path / name
+        target.write_text(content, encoding="utf-8")
+        mode = 0o640 if index % 2 else 0o600
+        target.chmod(mode)
+        expected_modes[name] = mode
+
+    write_report(tmp_path, replacement, overwrite=True)
+
+    assert {name: (tmp_path / name).read_text(encoding="utf-8") for name in OUTPUT_NAMES} == replacement
+    assert {
+        name: stat.S_IMODE((tmp_path / name).stat().st_mode) for name in OUTPUT_NAMES
+    } == expected_modes
+
+
+def test_write_report_new_outputs_keep_private_default_permissions(tmp_path):
+    documents = {name: "fresh" for name in OUTPUT_NAMES}
+
+    write_report(tmp_path, documents, overwrite=True)
+
+    assert all(
+        stat.S_IMODE((tmp_path / name).stat().st_mode) == 0o600 for name in OUTPUT_NAMES
+    )
 
 def _forecast_for(tmp_path: Path, artifacts: list[dict], policy: dict | None = None):
     write_page(tmp_path, "page.json", artifacts, len(artifacts))
