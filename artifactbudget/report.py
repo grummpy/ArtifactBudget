@@ -6,6 +6,7 @@ import csv
 import html
 import io
 import os
+import tempfile
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from fractions import Fraction
@@ -85,13 +86,59 @@ def write_report(directory: str | Path, documents: dict[str, str], *, overwrite:
                 f"{name} already exists in {directory}. Pass --overwrite to replace report files."
             )
     directory.mkdir(parents=True, exist_ok=True)
-    for name in OUTPUT_NAMES:
-        target = directory / name
-        if target.is_symlink():
-            raise ArtifactBudgetError(f"Refusing to write through symlinked report file {name}.")
-        temporary = directory / f".{name}.tmp"
-        temporary.write_text(documents[name], encoding="utf-8")
-        os.replace(temporary, target)
+    staged: dict[str, Path] = {}
+    backups: dict[str, Path] = {}
+    replaced: list[str] = []
+    committed = False
+    try:
+        # mkstemp is exclusive and does not follow a predictable planted name.
+        # Stage every document before replacing anything, so an interrupted
+        # render leaves the previous complete report untouched.
+        for name in OUTPUT_NAMES:
+            descriptor, temporary = tempfile.mkstemp(prefix=f".{name}.", suffix=".tmp", dir=directory)
+            staged[name] = Path(temporary)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(documents[name])
+        for name in OUTPUT_NAMES:
+            target = directory / name
+            if target.is_symlink():
+                raise ArtifactBudgetError(f"Refusing to write through symlinked report file {name}.")
+            # Keep a private, exclusive backup until every output has been
+            # replaced.  A later replacement failure must not leave a mixed
+            # report set behind.
+            if target.exists():
+                descriptor, backup = tempfile.mkstemp(prefix=f".{name}.", suffix=".bak", dir=directory)
+                backups[name] = Path(backup)
+                with target.open("rb") as source, os.fdopen(descriptor, "wb") as destination:
+                    destination.write(source.read())
+            os.replace(staged[name], target)
+            staged.pop(name)
+            replaced.append(name)
+        committed = True
+    finally:
+        if not committed:
+            # Restore in reverse order so a handled write error leaves the
+            # complete prior report available, rather than a partial update.
+            for name in reversed(replaced):
+                target = directory / name
+                backup = backups.pop(name, None)
+                if backup is None:
+                    try:
+                        target.unlink()
+                    except FileNotFoundError:
+                        pass
+                else:
+                    os.replace(backup, target)
+        for temporary in staged.values():
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+        for backup in backups.values():
+            try:
+                backup.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def validation_text(diagnostics: tuple[Diagnostic, ...] | list[Diagnostic], *, heading: str) -> str:

@@ -101,6 +101,29 @@ def test_empty_inventory(tmp_path):
     assert snapshot.artifacts == ()
 
 
+def test_export_aliases_are_rejected_by_canonical_identity(tmp_path):
+    write_page(tmp_path, "page.json", [], 0)
+    manifest = write_manifest(
+        tmp_path, [repo_entry("demo/alpha", ["page.json", "./page.json"])]
+    )
+    snapshot = load_snapshot(manifest)
+    assert not snapshot.ok
+    assert len(snapshot.files) == 1
+    assert any(item.code == "duplicate_file" for item in snapshot.errors)
+
+
+def test_export_symlink_alias_is_rejected_by_canonical_identity(tmp_path):
+    write_page(tmp_path, "page.json", [], 0)
+    (tmp_path / "page-alias.json").symlink_to(tmp_path / "page.json")
+    manifest = write_manifest(
+        tmp_path, [repo_entry("demo/alpha", ["page.json", "page-alias.json"])]
+    )
+    snapshot = load_snapshot(manifest)
+    assert not snapshot.ok
+    assert len(snapshot.files) == 1
+    assert any(item.code == "duplicate_file" for item in snapshot.errors)
+
+
 def test_identical_overlap_and_conflict(tmp_path):
     row = gh_artifact(1, "same", 10, "2026-10-01T00:00:00Z", "2026-10-20T00:00:00Z")
     other = gh_artifact(1, "same", 11, "2026-10-01T00:00:00Z", "2026-10-20T00:00:00Z")

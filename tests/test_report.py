@@ -7,20 +7,87 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from artifactbudget import __version__
 from artifactbudget.forecast import GIB, evaluate
 from artifactbudget.importer import load_snapshot
 from artifactbudget.policy import apply_policy
 from artifactbudget.report import (
+    OUTPUT_NAMES,
     build_documents,
     format_decimal_gb,
     format_gib,
     neutralize,
     render_html,
+    write_report,
 )
-
 from support import gh_artifact, repo_entry, write_manifest, write_page
 
+
+def test_write_report_refuses_planted_predictable_temp_symlink(tmp_path):
+    documents = {name: "fresh" for name in OUTPUT_NAMES}
+    sentinel = tmp_path / "sentinel"
+    sentinel.write_text("keep", encoding="utf-8")
+    # The historical predictable name must not be opened or followed.
+    (tmp_path / ".report.json.tmp").symlink_to(sentinel)
+    write_report(tmp_path, documents, overwrite=True)
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+    assert (tmp_path / "report.json").read_text(encoding="utf-8") == "fresh"
+
+
+def test_write_report_staging_failure_preserves_existing_reports(tmp_path, monkeypatch):
+    original = {name: f"old {name}" for name in OUTPUT_NAMES}
+    replacement = {name: f"new {name}" for name in OUTPUT_NAMES}
+    for name, content in original.items():
+        (tmp_path / name).write_text(content, encoding="utf-8")
+
+    from artifactbudget import report
+
+    real_mkstemp = report.tempfile.mkstemp
+    calls = 0
+
+    def interrupted_mkstemp(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated interrupted staging")
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(report.tempfile, "mkstemp", interrupted_mkstemp)
+    with pytest.raises(OSError, match="interrupted staging"):
+        write_report(tmp_path, replacement, overwrite=True)
+
+    assert {name: (tmp_path / name).read_text(encoding="utf-8") for name in OUTPUT_NAMES} == original
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_write_report_replacement_failure_rolls_back_existing_reports(tmp_path, monkeypatch):
+    original = {name: f"old {name}" for name in OUTPUT_NAMES}
+    replacement = {name: f"new {name}" for name in OUTPUT_NAMES}
+    for name, content in original.items():
+        (tmp_path / name).write_text(content, encoding="utf-8")
+
+    from artifactbudget import report
+
+    real_replace = report.os.replace
+    replacements = 0
+
+    def interrupted_replace(source, target):
+        nonlocal replacements
+        if Path(target).name in OUTPUT_NAMES and Path(source).suffix == ".tmp":
+            replacements += 1
+            if replacements == 2:
+                raise OSError("simulated replacement interruption")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(report.os, "replace", interrupted_replace)
+    with pytest.raises(OSError, match="replacement interruption"):
+        write_report(tmp_path, replacement, overwrite=True)
+
+    assert {name: (tmp_path / name).read_text(encoding="utf-8") for name in OUTPUT_NAMES} == original
+    assert not list(tmp_path.glob(".*.tmp"))
+    assert not list(tmp_path.glob(".*.bak"))
 
 def _forecast_for(tmp_path: Path, artifacts: list[dict], policy: dict | None = None):
     write_page(tmp_path, "page.json", artifacts, len(artifacts))
