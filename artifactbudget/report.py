@@ -118,7 +118,14 @@ def write_report(directory: str | Path, documents: dict[str, str], *, overwrite:
                 os.chmod(staged[name], existing_mode)
                 descriptor, backup = tempfile.mkstemp(prefix=f".{name}.", suffix=".bak", dir=directory)
                 backups[name] = Path(backup)
-                os.fchmod(descriptor, existing_mode)
+                # Windows exposes ``chmod`` but not ``fchmod`` on the
+                # supported Python versions.  The backup came from mkstemp
+                # and remains open here, so the pathname fallback is limited
+                # to that exclusive file while preserving its ordinary mode.
+                if hasattr(os, "fchmod"):
+                    os.fchmod(descriptor, existing_mode)
+                else:
+                    os.chmod(backup, existing_mode)
                 with target.open("rb") as source, os.fdopen(descriptor, "wb") as destination:
                     destination.write(source.read())
             os.replace(staged[name], target)

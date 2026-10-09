@@ -110,6 +110,24 @@ def test_write_report_preserves_existing_permissions_on_overwrite(tmp_path):
     } == expected_modes
 
 
+def test_write_report_preserves_modes_without_fchmod(tmp_path, monkeypatch):
+    original = {name: f"old {name}" for name in OUTPUT_NAMES}
+    replacement = {name: f"new {name}" for name in OUTPUT_NAMES}
+    for name, content in original.items():
+        target = tmp_path / name
+        target.write_text(content, encoding="utf-8")
+        target.chmod(0o640)
+
+    from artifactbudget import report
+
+    monkeypatch.delattr(report.os, "fchmod", raising=False)
+    write_report(tmp_path, replacement, overwrite=True)
+
+    assert all(
+        stat.S_IMODE((tmp_path / name).stat().st_mode) == 0o640 for name in OUTPUT_NAMES
+    )
+
+
 def test_write_report_new_outputs_keep_private_default_permissions(tmp_path):
     documents = {name: "fresh" for name in OUTPUT_NAMES}
 
