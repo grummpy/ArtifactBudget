@@ -166,6 +166,9 @@ def _load_repository(
         return [], [], None, findings
 
     unique_files: list[str] = []
+    # Compare the confined, canonical identity rather than the spelling in the
+    # manifest.  Otherwise ``page.json`` and ``./page.json`` read the same
+    # export twice (and symlink aliases can do the same thing).
     seen_here: set[str] = set()
     for raw_name in listed:
         if not isinstance(raw_name, str) or raw_name == "" or raw_name.strip() != raw_name:
@@ -178,7 +181,20 @@ def _load_repository(
                 )
             )
             continue
-        if raw_name in seen_here:
+        try:
+            identity = str(_resolve_export(manifest_dir, raw_name))
+        except ValueError as exc:
+            findings.append(
+                Diagnostic(
+                    level="error",
+                    code="path_rejected",
+                    message=f"{repository} file {raw_name} was rejected: {exc}",
+                    repository=repository,
+                    source_file=raw_name,
+                )
+            )
+            continue
+        if identity in seen_here:
             findings.append(
                 Diagnostic(
                     level="error",
@@ -189,8 +205,8 @@ def _load_repository(
                 )
             )
             continue
-        seen_here.add(raw_name)
-        if raw_name in used_files:
+        seen_here.add(identity)
+        if identity in used_files:
             findings.append(
                 Diagnostic(
                     level="error",
@@ -202,7 +218,7 @@ def _load_repository(
             )
             continue
         unique_files.append(raw_name)
-    used_files.update(unique_files)
+    used_files.update(seen_here)
 
     artifacts: list[Artifact] = []
     file_rows: list[SourceFile] = []
