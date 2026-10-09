@@ -107,8 +107,18 @@ def write_report(directory: str | Path, documents: dict[str, str], *, overwrite:
             # replaced.  A later replacement failure must not leave a mixed
             # report set behind.
             if target.exists():
+                # ``mkstemp`` deliberately creates private files (0600),
+                # which is the safe default for a newly-created report.  An
+                # overwrite, however, replaces the contents of a report the
+                # caller already made readable to a particular audience.
+                # Preserve its ordinary permission bits on both the staged
+                # replacement and its rollback copy.  Do not propagate set-id
+                # or sticky bits to newly-created inodes.
+                existing_mode = target.stat().st_mode & 0o777
+                os.chmod(staged[name], existing_mode)
                 descriptor, backup = tempfile.mkstemp(prefix=f".{name}.", suffix=".bak", dir=directory)
                 backups[name] = Path(backup)
+                os.fchmod(descriptor, existing_mode)
                 with target.open("rb") as source, os.fdopen(descriptor, "wb") as destination:
                     destination.write(source.read())
             os.replace(staged[name], target)
