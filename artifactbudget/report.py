@@ -200,6 +200,14 @@ def render_json(
         "as_of": format_timestamp(forecast.t0),
         "horizon_days": forecast.horizon_days,
         "horizon_end": format_timestamp(forecast.horizon_end),
+        "future_upload_budget": {
+            "bytes_per_day": forecast.future_upload_bytes_per_day,
+            "retention_days": forecast.future_upload_retention_days,
+            "model": (
+                "Hypothetical uniform uploads arriving continuously over the horizon; "
+                "not observed GitHub activity."
+            ),
+        },
         "inputs": {
             "manifest": snapshot.manifest_path,
             "manifest_sha256": snapshot.manifest_sha256,
@@ -404,12 +412,18 @@ def _table_csvs(snapshot: Snapshot, forecast: Forecast) -> dict[str, str]:
             "cap_days",
             "known_byte_seconds",
             "known_gib_hours",
+            "future_upload_byte_seconds",
+            "future_upload_gib_hours",
+            "total_byte_seconds",
+            "total_gib_hours",
             "lower_byte_seconds",
             "upper_byte_seconds",
             "lower_gib_hours",
             "upper_gib_hours",
             "reduction_byte_seconds",
             "reduction_gib_hours",
+            "total_reduction_byte_seconds",
+            "total_reduction_gib_hours",
             "retained_bytes_at_t0",
             "immediate_removal_bytes",
             "immediate_removal_count",
@@ -420,12 +434,18 @@ def _table_csvs(snapshot: Snapshot, forecast: Forecast) -> dict[str, str]:
                 "" if scenario.cap_days is None else scenario.cap_days,
                 _fraction_cell(scenario.known_byte_seconds),
                 _fraction_cell(to_gib_hours(scenario.known_byte_seconds)),
+                _fraction_cell(scenario.future_upload_byte_seconds),
+                _fraction_cell(to_gib_hours(scenario.future_upload_byte_seconds)),
+                _fraction_cell(scenario.total_byte_seconds),
+                _fraction_cell(to_gib_hours(scenario.total_byte_seconds)),
                 _fraction_cell(scenario.lower_byte_seconds),
                 _fraction_cell(scenario.upper_byte_seconds),
                 _fraction_cell(to_gib_hours(scenario.lower_byte_seconds)),
                 _fraction_cell(to_gib_hours(scenario.upper_byte_seconds)),
                 _fraction_cell(scenario.reduction_byte_seconds),
                 _fraction_cell(to_gib_hours(scenario.reduction_byte_seconds)),
+                _fraction_cell(scenario.total_reduction_byte_seconds),
+                _fraction_cell(to_gib_hours(scenario.total_reduction_byte_seconds)),
                 scenario.retained_bytes_at_t0,
                 scenario.immediate_removal_bytes,
                 scenario.immediate_removal_count,
@@ -569,9 +589,12 @@ def _current_dict(snapshot: Snapshot, forecast: Forecast) -> dict[str, object]:
 
 def _scenario_dict(scenario: object) -> dict[str, object]:
     known_hours = to_gib_hours(scenario.known_byte_seconds)  # type: ignore[attr-defined]
+    future_upload_hours = to_gib_hours(scenario.future_upload_byte_seconds)  # type: ignore[attr-defined]
+    total_hours = to_gib_hours(scenario.total_byte_seconds)  # type: ignore[attr-defined]
     lower_hours = to_gib_hours(scenario.lower_byte_seconds)  # type: ignore[attr-defined]
     upper_hours = to_gib_hours(scenario.upper_byte_seconds)  # type: ignore[attr-defined]
     reduction_hours = to_gib_hours(scenario.reduction_byte_seconds)  # type: ignore[attr-defined]
+    total_reduction_hours = to_gib_hours(scenario.total_reduction_byte_seconds)  # type: ignore[attr-defined]
     return {
         "name": scenario.name,  # type: ignore[attr-defined]
         "label": scenario.label,  # type: ignore[attr-defined]
@@ -579,12 +602,20 @@ def _scenario_dict(scenario: object) -> dict[str, object]:
         "known_byte_seconds": _json_number(scenario.known_byte_seconds),  # type: ignore[attr-defined]
         "known_gib_hours": _json_number(known_hours),
         "known_gib_hours_display": format_gib_hours(known_hours),
+        "future_upload_byte_seconds": _json_number(scenario.future_upload_byte_seconds),  # type: ignore[attr-defined]
+        "future_upload_gib_hours": _json_number(future_upload_hours),
+        "future_upload_gib_hours_display": format_gib_hours(future_upload_hours),
+        "total_byte_seconds": _json_number(scenario.total_byte_seconds),  # type: ignore[attr-defined]
+        "total_gib_hours": _json_number(total_hours),
+        "total_gib_hours_display": format_gib_hours(total_hours),
         "lower_byte_seconds": _json_number(scenario.lower_byte_seconds),  # type: ignore[attr-defined]
         "upper_byte_seconds": _json_number(scenario.upper_byte_seconds),  # type: ignore[attr-defined]
         "lower_gib_hours": _json_number(lower_hours),
         "upper_gib_hours": _json_number(upper_hours),
         "reduction_byte_seconds": _json_number(scenario.reduction_byte_seconds),  # type: ignore[attr-defined]
         "reduction_gib_hours": _json_number(reduction_hours),
+        "total_reduction_byte_seconds": _json_number(scenario.total_reduction_byte_seconds),  # type: ignore[attr-defined]
+        "total_reduction_gib_hours": _json_number(total_reduction_hours),
         "retained_bytes_at_t0": scenario.retained_bytes_at_t0,  # type: ignore[attr-defined]
         "immediate_removal_bytes": scenario.immediate_removal_bytes,  # type: ignore[attr-defined]
         "immediate_removal_count": scenario.immediate_removal_count,  # type: ignore[attr-defined]
@@ -1042,9 +1073,12 @@ def _forecast_section(forecast: Forecast) -> str:
     scenario_rows = []
     for scenario in forecast.scenarios:
         known = to_gib_hours(scenario.known_byte_seconds)
+        future_upload = to_gib_hours(scenario.future_upload_byte_seconds)
+        total = to_gib_hours(scenario.total_byte_seconds)
         lower = to_gib_hours(scenario.lower_byte_seconds)
         upper = to_gib_hours(scenario.upper_byte_seconds)
         reduction = to_gib_hours(scenario.reduction_byte_seconds)
+        total_reduction = to_gib_hours(scenario.total_reduction_byte_seconds)
         removal = (
             f"{scenario.immediate_removal_count} artifact(s), {scenario.immediate_removal_bytes:,} bytes"
             if scenario.immediate_removal_count
@@ -1054,9 +1088,12 @@ def _forecast_section(forecast: Forecast) -> str:
             "<tr>"
             f"<td>{_esc(scenario.label)}</td>"
             f"<td class=\"num\">{_esc(format_gib_hours(known))}</td>"
+            f"<td class=\"num\">{_esc(format_gib_hours(future_upload))}</td>"
+            f"<td class=\"num\">{_esc(format_gib_hours(total))}</td>"
             f"<td class=\"num\">{_esc(format_gib_hours(lower))}</td>"
             f"<td class=\"num\">{_esc(format_gib_hours(upper))}</td>"
             f"<td class=\"num\">{_esc(format_gib_hours(reduction))}</td>"
+            f"<td class=\"num\">{_esc(format_gib_hours(total_reduction))}</td>"
             f"<td class=\"num\">{scenario.retained_bytes_at_t0:,}</td>"
             f"<td>{_esc(removal)}</td>"
             "</tr>"
@@ -1080,6 +1117,10 @@ def _forecast_section(forecast: Forecast) -> str:
         "from t0 through the horizon. Unknown-expiry bytes are not drawn. "
         "GiB-hours below are equivalent to GitHub's documented binary GB-hours. "
         "Reduction versus baseline is not a refund and not a guaranteed monetary saving.</p>"
+        "<p>The optional future-upload budget is a hypothetical uniform upload rate, not observed "
+        "GitHub activity. It is included in scenario totals but not in the retained-byte chart. "
+        f"This report uses {forecast.future_upload_bytes_per_day:,} bytes/day and "
+        f"{forecast.future_upload_retention_days} retention day(s); zero growth contributes exactly zero.</p>"
         f"{chart}"
         '<ul class="legend">'
         '<li><span class="swatch swatch-baseline"></span> Baseline (dashed)</li>'
@@ -1091,13 +1132,16 @@ def _forecast_section(forecast: Forecast) -> str:
         f"{removal_block}"
         "<h3>Scenario totals</h3>"
         '<div class="wrap"><table>'
-        "<caption>Known-expiry GiB-hours over the horizon, with an explicit unknown-expiry bound.</caption>"
+        "<caption>Imported known-expiry and optional hypothetical future-upload GiB-hours over the horizon, with an explicit unknown-expiry bound.</caption>"
         "<thead><tr>"
         "<th scope=\"col\">Scenario</th>"
         "<th scope=\"col\">Known GiB-hours</th>"
+        "<th scope=\"col\">Future-upload GiB-hours</th>"
+        "<th scope=\"col\">Total modeled GiB-hours</th>"
         "<th scope=\"col\">Lower bound</th>"
         "<th scope=\"col\">Upper bound</th>"
         "<th scope=\"col\">Reduction vs baseline</th>"
+        "<th scope=\"col\">Total reduction vs baseline</th>"
         "<th scope=\"col\">Known bytes retained at t0</th>"
         "<th scope=\"col\">Hypothetical immediate removal</th>"
         "</tr></thead>"

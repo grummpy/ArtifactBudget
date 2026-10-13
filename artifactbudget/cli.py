@@ -78,6 +78,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Timezone-aware report instant. Defaults to the manifest as_of value.",
     )
     report.add_argument(
+        "--future-upload-bytes-per-day",
+        type=int,
+        default=0,
+        help=(
+            "Hypothetical uniform future-upload rate in bytes/day (default: 0). "
+            "This is an offline planning input, not observed GitHub activity."
+        ),
+    )
+    report.add_argument(
+        "--future-upload-retention-days",
+        type=int,
+        default=30,
+        help=(
+            "Retention duration for hypothetical future uploads in days (default: 30). "
+            "Scenario caps shorten this duration but never lengthen it."
+        ),
+    )
+    report.add_argument(
         "--out",
         required=True,
         help="Directory to write report files into. Created if missing.",
@@ -108,6 +126,10 @@ def _validate(args: argparse.Namespace) -> int:
 def _report(args: argparse.Namespace) -> int:
     if isinstance(args.horizon_days, bool) or args.horizon_days < 1:
         raise ArtifactBudgetError("horizon-days must be a positive integer")
+    if isinstance(args.future_upload_bytes_per_day, bool) or args.future_upload_bytes_per_day < 0:
+        raise ArtifactBudgetError("future-upload-bytes-per-day must be a nonnegative integer")
+    if isinstance(args.future_upload_retention_days, bool) or args.future_upload_retention_days < 1:
+        raise ArtifactBudgetError("future-upload-retention-days must be a positive integer")
     snapshot, t0 = _load(args, as_of=args.as_of)
     extra_errors = instant_errors(snapshot.artifacts, t0)
     if snapshot.errors or extra_errors:
@@ -119,7 +141,13 @@ def _report(args: argparse.Namespace) -> int:
         print("Report not written.", file=sys.stderr)
         return 1
     try:
-        forecast = evaluate(snapshot.artifacts, t0, args.horizon_days)
+        forecast = evaluate(
+            snapshot.artifacts,
+            t0,
+            args.horizon_days,
+            future_upload_bytes_per_day=args.future_upload_bytes_per_day,
+            future_upload_retention_days=args.future_upload_retention_days,
+        )
     except OverflowError as exc:
         raise ArtifactBudgetError("horizon-days is too large to place on the calendar") from exc
     documents = build_documents(snapshot, forecast)

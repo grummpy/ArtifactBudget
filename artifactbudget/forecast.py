@@ -37,7 +37,8 @@ ASSUMPTIONS: tuple[str, ...] = (
     "Future storage for a known-expiry artifact is size_bytes times the seconds from t0 to min(effective expiry, t0+H), converted from exact byte-seconds. Values are rounded only for display.",
     "Scenario reduction compares a cap with the baseline of the same snapshot and horizon for the known-expiry cohort only. It is not a refund and not a guaranteed monetary saving.",
     "Unknown-expiry artifacts stay in the current inventory. They are excluded from point forecasts and from cap shortening. Their horizon contribution is bounded from zero to the full horizon.",
-    "The model covers only the imported cohort. It includes no new uploads, restores, manual deletions, or size changes.",
+    "With the default zero future-upload rate, the model covers only the imported cohort. It includes no inferred new uploads, restores, manual deletions, or size changes.",
+    "An optional future-upload budget is a hypothetical uniform byte rate, not observed GitHub activity. It assumes uploads arrive continuously over the horizon and each upload follows the supplied retention duration. It does not create, upload, delete, or extend any artifact.",
     "GiB and GiB-hours divide by 1,073,741,824 (2^30), matching GitHub's documented binary billing gigabyte. Decimal GB is bytes/1,000,000,000 and is display-only. This report is not an account bill and does not convert to GB-months.",
     "A matching exported total_count does not prove that the snapshot is complete or atomic. Repositories absent from the manifest are outside coverage.",
     "Artifact names and policy reasons are untrusted text. HTML output escapes them, and CSV output neutralizes spreadsheet-formula prefixes.",
@@ -47,7 +48,7 @@ LIMITATIONS: tuple[str, ...] = (
     "ArtifactBudget never deletes artifacts and never changes GitHub retention, settings, workflows, or billing.",
     "A protection label only removes an artifact from shortened-retention simulations. It does not extend GitHub retention or preserve the file.",
     "Protected evidence can still expire on the imported schedule. Expiry within 7 days is called out in this report.",
-    "Figures describe this imported snapshot only. They are not an invoice, a refund, or a forecast of new workflow runs, caches, or packages.",
+    "Figures describe the imported snapshot plus any explicitly supplied hypothetical upload budget. They are not an invoice, a refund, or a prediction of new workflow runs, caches, or packages.",
     "This build has no live GitHub adapter. It reads local JSON exports and does not contact GitHub.",
 )
 
@@ -323,9 +324,12 @@ class ScenarioForecast:
     label: str
     cap_days: int | None
     known_byte_seconds: Fraction
+    future_upload_byte_seconds: Fraction
+    total_byte_seconds: Fraction
     lower_byte_seconds: Fraction
     upper_byte_seconds: Fraction
     reduction_byte_seconds: Fraction
+    total_reduction_byte_seconds: Fraction
     retained_bytes_at_t0: int
     immediate_removal_bytes: int
     immediate_removal_count: int
@@ -338,6 +342,8 @@ class Forecast:
     t0: datetime
     horizon_days: int
     horizon_end: datetime
+    future_upload_bytes_per_day: int
+    future_upload_retention_days: int
     scenarios: tuple[ScenarioForecast, ...]
     artifacts: tuple[ArtifactForecast, ...]
     warnings: tuple[Diagnostic, ...]
@@ -355,11 +361,26 @@ def evaluate(
     artifacts: Sequence[Artifact],
     t0: datetime,
     horizon_days: int = 30,
+    *,
+    future_upload_bytes_per_day: int = 0,
+    future_upload_retention_days: int = 30,
 ) -> Forecast:
     """Forecast one cohort at a fixed instant. This function does not read the clock."""
 
     if isinstance(horizon_days, bool) or not isinstance(horizon_days, int) or horizon_days < 1:
         raise ValueError("horizon_days must be a positive integer")
+    if (
+        isinstance(future_upload_bytes_per_day, bool)
+        or not isinstance(future_upload_bytes_per_day, int)
+        or future_upload_bytes_per_day < 0
+    ):
+        raise ValueError("future_upload_bytes_per_day must be a nonnegative integer")
+    if (
+        isinstance(future_upload_retention_days, bool)
+        or not isinstance(future_upload_retention_days, int)
+        or future_upload_retention_days < 1
+    ):
+        raise ValueError("future_upload_retention_days must be a positive integer")
     t0 = _utc(t0)
     normalized = tuple(_normalize(artifact) for artifact in artifacts)
     problems = instant_errors(normalized, t0)
@@ -381,10 +402,21 @@ def evaluate(
         ("cap_30", "30-day cap", 30),
     )
     known_by_name: dict[str, Fraction] = {}
+    total_by_name: dict[str, Fraction] = {}
     scenarios: list[ScenarioForecast] = []
     for name, label, cap in scenario_specs:
         known = _known_byte_seconds(normalized, t0, horizon_end, cap)
         known_by_name[name] = known
+        retention_days = future_upload_retention_days if cap is None else min(
+            future_upload_retention_days, cap
+        )
+        future_upload = _future_upload_byte_seconds(
+            future_upload_bytes_per_day,
+            horizon_days,
+            retention_days,
+        )
+        total = known + future_upload
+        total_by_name[name] = total
         extra = Fraction(unknown_bytes * horizon_days * 86400, 1)
         removals = tuple(
             sorted(
@@ -402,15 +434,21 @@ def evaluate(
         reduction = baseline_known - known
         if reduction < 0:
             raise AssertionError("a cap increased known-expiry storage; this is a bug")
+        total_reduction = total_by_name["baseline"] - total
+        if total_reduction < 0:
+            raise AssertionError("a cap increased total modeled storage; this is a bug")
         scenarios.append(
             ScenarioForecast(
                 name=name,
                 label=label,
                 cap_days=cap,
                 known_byte_seconds=known,
-                lower_byte_seconds=known,
-                upper_byte_seconds=known + extra,
+                future_upload_byte_seconds=future_upload,
+                total_byte_seconds=total,
+                lower_byte_seconds=total,
+                upper_byte_seconds=total + extra,
                 reduction_byte_seconds=reduction,
+                total_reduction_byte_seconds=total_reduction,
                 retained_bytes_at_t0=retained_bytes_at(normalized, t0, t0, cap),
                 immediate_removal_bytes=removal_bytes,
                 immediate_removal_count=len(removals),
@@ -423,6 +461,8 @@ def evaluate(
         t0=t0,
         horizon_days=horizon_days,
         horizon_end=horizon_end,
+        future_upload_bytes_per_day=future_upload_bytes_per_day,
+        future_upload_retention_days=future_upload_retention_days,
         scenarios=tuple(scenarios),
         artifacts=rows,
         warnings=quality_warnings(normalized, t0),
@@ -477,6 +517,29 @@ def _known_byte_seconds(
             continue
         total += byte_seconds(artifact.size_bytes, t0, min(effective, horizon_end))
     return total
+
+
+def _future_upload_byte_seconds(
+    bytes_per_day: int,
+    horizon_days: int,
+    retention_days: int,
+) -> Fraction:
+    """Return byte-seconds for a uniform hypothetical future-upload rate.
+
+    Uploads are modeled continuously.  A byte arriving at time ``s`` is retained
+    for the shorter of the configured duration and the remaining forecast
+    horizon.  This deliberately models a budget assumption only; it does not
+    infer future activity from the imported artifact cohort.
+    """
+
+    if bytes_per_day == 0:
+        return Fraction(0)
+    horizon_seconds = horizon_days * 86400
+    retention_seconds = min(retention_days, horizon_days) * 86400
+    rate = Fraction(bytes_per_day, 86400)
+    return rate * (
+        retention_seconds * horizon_seconds - Fraction(retention_seconds**2, 2)
+    )
 
 
 def _series(
