@@ -12,7 +12,7 @@ The cover above is a close recreation. The original image was not on disk when t
 
 ArtifactBudget does not delete artifacts, download archives, edit workflows, or change GitHub retention, settings, or billing. It does not talk to GitHub. A protection label only excludes an artifact from shortened-retention simulations. It does not extend GitHub retention and it does not preserve the file.
 
-There is no live GitHub adapter in this build. Currency amounts are out of scope. The forecast does not include new uploads, restores, manual deletions, caches, or Packages growth, and it is not an account bill.
+There is no live GitHub adapter in this build. Currency amounts are out of scope. By default the forecast covers the imported cohort only: it does not include new uploads, restores, manual deletions, caches, or Packages growth, and it is not an account bill. An explicit offline future-upload planning input can add a hypothetical uniform upload rate; it is not telemetry, a prediction, or an account bill.
 
 ## Install
 
@@ -90,6 +90,7 @@ Names and branches are never treated as policy. Unknown policy ids warn. Identic
 ```text
 artifactbudget validate --manifest examples/manifest.json
 artifactbudget report --manifest examples/manifest.json --policy examples/protection.json --horizon-days 30 --out report/
+artifactbudget report --manifest examples/manifest.json --horizon-days 30 --future-upload-bytes-per-day 104857600 --future-upload-retention-days 30 --out budget-report/
 python -m pytest
 ```
 
@@ -108,6 +109,7 @@ The report instant `t0` comes from the manifest `as_of`, or from `--as-of`. Fore
 - Retained modeled bytes at time `t` are sizes whose effective expiry is strictly later than `t`. At the exact expiry timestamp the artifact no longer contributes.
 - Future storage over `[t0, t0+H)` is `size_bytes * seconds / 3600`, using exact byte-seconds. `H` defaults to 30 days of 86400 seconds.
 - Reduction is baseline minus that scenario for the known-expiry cohort. It is not a refund.
+- `--future-upload-bytes-per-day` optionally adds a hypothetical, uniform upload budget. `--future-upload-retention-days` controls how long each future byte is retained in the baseline; a scenario cap shortens that duration but never lengthens it. The model assumes continuous arrival over the horizon, records the input in JSON/CSV/HTML, and never infers it from the imported snapshot. With the default rate of zero, future-upload byte-seconds are exactly zero and all existing cohort values remain unchanged.
 
 Display:
 

@@ -54,6 +54,7 @@ def test_validate_and_report_examples(tmp_path):
     assert report_code == 0
     payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
     assert payload["horizon_days"] == 30
+    assert payload["future_upload_budget"]["bytes_per_day"] == 0
     assert payload["current"]["retained_bytes"] == 3943694336
     assert payload["current"]["expired_bytes"] == 41943040
     assert payload["current"]["imported_bytes"] == 3985637376
@@ -91,6 +92,30 @@ def test_validate_and_report_examples(tmp_path):
     with (out / "artifacts.csv").open(encoding="utf-8", newline="") as handle:
         parsed = list(csv.DictReader(handle))
     assert sum(int(row["size_bytes"]) for row in parsed) == payload["current"]["imported_bytes"]
+
+
+def test_report_records_hypothetical_future_upload_budget(tmp_path):
+    out = tmp_path / "budget"
+    assert main(
+        [
+            "report",
+            "--manifest",
+            "examples/manifest.json",
+            "--horizon-days",
+            "10",
+            "--future-upload-bytes-per-day",
+            "100",
+            "--future-upload-retention-days",
+            "8",
+            "--out",
+            str(out),
+        ]
+    ) == 0
+    payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert payload["future_upload_budget"]["bytes_per_day"] == 100
+    scenarios = {item["name"]: item for item in payload["scenarios"]}
+    assert scenarios["cap_3"]["future_upload_byte_seconds"] < scenarios["baseline"]["future_upload_byte_seconds"]
+    assert "not observed GitHub activity" in (out / "report.html").read_text(encoding="utf-8")
 
 
 def test_overwrite_symlink_and_unrelated_files(tmp_path):

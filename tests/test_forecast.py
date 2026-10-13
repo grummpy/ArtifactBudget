@@ -187,6 +187,53 @@ def test_horizon_limits_storage_hours():
     assert _hours(short_forecast, "baseline") == 24
 
 
+def test_zero_future_upload_budget_is_exactly_the_imported_cohort_baseline():
+    rows = [art(size_bytes=GIB, expires_at=T0 + timedelta(days=10))]
+    ordinary = evaluate(rows, T0, horizon_days=7)
+    zero = evaluate(
+        rows,
+        T0,
+        horizon_days=7,
+        future_upload_bytes_per_day=0,
+        future_upload_retention_days=1,
+    )
+    for before, after in zip(ordinary.scenarios, zero.scenarios):
+        assert after.future_upload_byte_seconds == 0
+        assert after.total_byte_seconds == before.known_byte_seconds
+        assert after.lower_byte_seconds == before.lower_byte_seconds
+        assert after.upper_byte_seconds == before.upper_byte_seconds
+        assert after.total_reduction_byte_seconds == before.reduction_byte_seconds
+
+
+def test_future_upload_budget_is_uniform_and_caps_only_shorten_retention():
+    forecast = evaluate(
+        [],
+        T0,
+        horizon_days=10,
+        future_upload_bytes_per_day=100,
+        future_upload_retention_days=8,
+    )
+    by_name = {scenario.name: scenario for scenario in forecast.scenarios}
+    day = 86400
+    assert by_name["baseline"].future_upload_byte_seconds == 4800 * day
+    assert by_name["cap_30"].future_upload_byte_seconds == 4800 * day
+    assert by_name["cap_7"].future_upload_byte_seconds == 4550 * day
+    assert by_name["cap_3"].future_upload_byte_seconds == 2550 * day
+    assert by_name["cap_3"].total_reduction_byte_seconds == 2250 * day
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"future_upload_bytes_per_day": -1}, "nonnegative"),
+        ({"future_upload_retention_days": 0}, "positive"),
+    ],
+)
+def test_future_upload_budget_validation(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        evaluate([], T0, **kwargs)
+
+
 def test_forecast_source_does_not_read_the_clock():
     from pathlib import Path
 
